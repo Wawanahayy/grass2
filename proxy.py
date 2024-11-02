@@ -90,7 +90,12 @@ async def main():
     with open(proxy_file, 'r') as file:
         all_proxies = file.read().splitlines()
 
-    active_proxies = random.sample(all_proxies, 100)
+    if not all_proxies:
+        logger.error("Tidak ada proxy yang tersedia dalam file.")
+        return
+
+    num_proxies_to_use = min(len(all_proxies), 100)  # Ambil proxy yang sesuai
+    active_proxies = random.sample(all_proxies, num_proxies_to_use)
     tasks = {asyncio.create_task(connect_to_wss(proxy, _user_id)): proxy for proxy in active_proxies}
 
     while True:
@@ -108,7 +113,6 @@ async def main():
         for proxy in set(active_proxies) - set(tasks.values()):
             new_task = asyncio.create_task(connect_to_wss(proxy, _user_id))
             tasks[new_task] = proxy
-
 def remove_proxy_from_list(proxy):
     with open("proxy.txt", "r+") as file:
         lines = file.readlines()
