@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-# @Author   : Solana0x
-# @File     : main.py
-# @Software : PyCharm
 import asyncio
 import random
 import ssl
@@ -50,7 +46,7 @@ async def connect_to_wss(user_id, socks5_proxy=None):
                         })
                         logger.debug(f"Mengirim PING: {send_message}")
                         await websocket.send(send_message)
-                        await asyncio.sleep(60)
+                        await asyncio.sleep(30)
 
                 send_ping_task = asyncio.create_task(send_ping())
                 
@@ -90,8 +86,10 @@ async def connect_to_wss(user_id, socks5_proxy=None):
             continue
 
 async def main():
-    _user_id = 'Ganti dengan User ID Anda di sini'
-    
+    # Membaca user_id dari file akun.txt
+    with open('akun.txt', 'r') as file:
+        _user_id = file.readline().strip()  # Mengambil baris pertama dan menghapus spasi
+
     # Memilih apakah menggunakan proxy atau tidak
     use_proxy = input("Apakah Anda ingin menggunakan proxy? (y/n): ").strip().lower() == 'y'
     
