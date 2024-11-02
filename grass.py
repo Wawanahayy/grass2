@@ -7,11 +7,25 @@ import uuid
 from loguru import logger
 import websockets  # Untuk koneksi WebSocket
 from websockets_proxy import Proxy, proxy_connect  # Untuk koneksi WebSocket dengan proxy
+import subprocess  # Untuk menjalankan perintah shell
+
+# Fungsi untuk mencetak teks berwarna
+def print_colored(color_code, text):
+    print(f"\033[{color_code}m{text}\033[0m")
+
+# Fungsi untuk menampilkan teks berwarna
+def display_colored_text():
+    print_colored("40;96", "============================================================")
+    print_colored("42;37", "=======================  J.W.P.A  ==========================")
+    print_colored("45;97", "================= @AirdropJP_JawaPride =====================")
+    print_colored("43;30", "=============== https://x.com/JAWAPRIDE_ID =================")
+    print_colored("41;97", "============= https://linktr.ee/Jawa_Pride_ID ==============")
+    print_colored("44;30", "============================================================")
 
 async def connect_to_wss(user_id, socks5_proxy=None):
     device_id = str(uuid.uuid4())
     logger.info(f"ID Perangkat: {device_id}")
-    
+
     while True:
         try:
             await asyncio.sleep(random.uniform(0.1, 1.0))  # Jeda acak antar koneksi
@@ -78,6 +92,7 @@ async def connect_to_wss(user_id, socks5_proxy=None):
                             logger.debug(f"Mengirim respons PONG: {pong_response}")
                             await websocket.send(json.dumps(pong_response))
                             
+
                 finally:
                     send_ping_task.cancel()
 
@@ -86,6 +101,10 @@ async def connect_to_wss(user_id, socks5_proxy=None):
             continue
 
 async def main():
+    # Menampilkan teks berwarna
+    display_colored_text()
+    time.sleep(5)  # Jeda selama 5 detik
+
     # Membaca user_id dari file akun.txt
     with open('akun.txt', 'r') as file:
         _user_id = file.readline().strip()  # Mengambil baris pertama dan menghapus spasi
