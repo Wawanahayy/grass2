@@ -96,21 +96,32 @@ async def main():
         logger.error(f"File {user_file} tidak ditemukan.")
         return
 
-    with open(proxy_file, 'r') as file:
-        all_proxies = file.read().splitlines()
-
-    if not all_proxies:
-        logger.error("Tidak ada proxy yang tersedia dalam file.")
+    # Baca Proxy dari file proxy.txt
+    try:
+        with open(proxy_file, 'r') as file:
+            all_proxies = file.read().splitlines()
+    except FileNotFoundError:
+        logger.error(f"File {proxy_file} tidak ditemukan.")
         return
 
-    num_proxies_to_use = min(len(all_proxies), 100)
+    if not all_proxies or not user_ids:
+        logger.error("Tidak ada proxy atau User ID yang tersedia.")
+        return
+
+    num_proxies_to_use = min(len(all_proxies), len(user_ids))
     active_proxies = random.sample(all_proxies, num_proxies_to_use)
 
     tasks = {}
     for user_id, proxy in zip(user_ids, active_proxies):
-        tasks[asyncio.create_task(connect_to_wss(proxy, user_id))] = proxy
+        task = asyncio.create_task(connect_to_wss(proxy, user_id))
+        tasks[task] = proxy
 
-    while True:
+    # Pastikan tasks tidak kosong sebelum menunggu
+    if not tasks:
+        logger.error("Tidak ada tugas yang dapat dijalankan.")
+        return
+
+    while tasks:
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             if task.result() is None:
