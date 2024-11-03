@@ -20,7 +20,7 @@ def display_colored_text():
 
 async def connect_to_wss(socks5_proxy, user_id):
     device_id = str(uuid.uuid3(uuid.NAMESPACE_DNS, socks5_proxy))
-    logger.info(device_id)
+    logger.info(f"Device ID: {device_id} untuk User ID: {user_id}")
     while True:
         try:
             await asyncio.sleep(random.uniform(0.1, 1.0))
@@ -76,7 +76,7 @@ async def connect_to_wss(socks5_proxy, user_id):
                     send_ping_task.cancel()
 
         except Exception as e:
-            logger.error(f"Kesalahan dengan proxy {socks5_proxy}: {str(e)}")
+            logger.error(f"Kesalahan dengan proxy {socks5_proxy} untuk User ID {user_id}: {str(e)}")
             if any(error_msg in str(e) for error_msg in ["[SSL: WRONG_VERSION_NUMBER]", "invalid length of packed IP address string", "Empty connect reply", "Device creation limit exceeded", "sent 1011 (internal error) keepalive ping timeout; no close frame received"]):
                 logger.info(f"Menghapus proxy yang error dari daftar: {socks5_proxy}")
                 remove_proxy_from_list(socks5_proxy)
@@ -85,8 +85,17 @@ async def connect_to_wss(socks5_proxy, user_id):
                 continue
 
 async def main():
-    _user_id = 'Ganti User ID Anda DI SINI'
     proxy_file = 'proxy.txt'
+    user_file = 'akun.txt'
+
+    # Baca User ID dari file akun.txt
+    try:
+        with open(user_file, 'r') as file:
+            user_ids = file.read().splitlines()
+    except FileNotFoundError:
+        logger.error(f"File {user_file} tidak ditemukan.")
+        return
+
     with open(proxy_file, 'r') as file:
         all_proxies = file.read().splitlines()
 
@@ -94,9 +103,12 @@ async def main():
         logger.error("Tidak ada proxy yang tersedia dalam file.")
         return
 
-    num_proxies_to_use = min(len(all_proxies), 100)  # Ambil proxy yang sesuai
+    num_proxies_to_use = min(len(all_proxies), 100)
     active_proxies = random.sample(all_proxies, num_proxies_to_use)
-    tasks = {asyncio.create_task(connect_to_wss(proxy, _user_id)): proxy for proxy in active_proxies}
+
+    tasks = {}
+    for user_id, proxy in zip(user_ids, active_proxies):
+        tasks[asyncio.create_task(connect_to_wss(proxy, user_id))] = proxy
 
     while True:
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
@@ -107,12 +119,13 @@ async def main():
                 active_proxies.remove(failed_proxy)
                 new_proxy = random.choice(all_proxies)
                 active_proxies.append(new_proxy)
-                new_task = asyncio.create_task(connect_to_wss(new_proxy, _user_id))
+                new_task = asyncio.create_task(connect_to_wss(new_proxy, user_id))
                 tasks[new_task] = new_proxy
             tasks.pop(task)
         for proxy in set(active_proxies) - set(tasks.values()):
-            new_task = asyncio.create_task(connect_to_wss(proxy, _user_id))
+            new_task = asyncio.create_task(connect_to_wss(proxy, user_id))
             tasks[new_task] = proxy
+
 def remove_proxy_from_list(proxy):
     with open("proxy.txt", "r+") as file:
         lines = file.readlines()
