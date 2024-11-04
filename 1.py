@@ -43,7 +43,7 @@ async def connect_to_wss(socks5_proxy, user_id):
                             {"id": str(uuid.uuid4()), "version": "1.0.0", "action": "PING", "data": {}})
                         logger.debug(send_message)
                         await websocket.send(send_message)
-                        await asyncio.sleep(60)
+                        await asyncio.sleep(random.uniform(5, 15))  # Interval PING acak antara 5 hingga 15 detik
 
                 send_ping_task = asyncio.create_task(send_ping())
                 try:
@@ -77,16 +77,9 @@ async def connect_to_wss(socks5_proxy, user_id):
 
         except Exception as e:
             logger.error(f"Kesalahan dengan proxy {socks5_proxy} untuk User ID {user_id}: {str(e)}")
-            if any(error_msg in str(e) for error_msg in ["[SSL: WRONG_VERSION_NUMBER]", "invalid length of packed IP address string", "Empty connect reply", "Device creation limit exceeded", "sent 1011 (internal error) keepalive ping timeout; no close frame received"]):
-                logger.info(f"Menghapus proxy yang error dari daftar: {socks5_proxy}")
-                remove_proxy_from_list(socks5_proxy)
-                return None
-            else:
-                # Delay sebelum melanjutkan ke akun berikutnya
-                delay = random.uniform(5, 10)
-                logger.info(f"Menunggu selama {delay:.2f} detik sebelum melanjutkan ke akun berikutnya...")
-                await asyncio.sleep(delay)
-                return  # Kembali untuk keluar dari fungsi dan melanjutkan ke akun berikutnya
+            # Penundaan acak antara 5 hingga 10 detik sebelum melanjutkan ke akun lain
+            await asyncio.sleep(random.uniform(5, 10))
+            return None  # Mengembalikan None untuk menandakan kegagalan dan melanjutkan ke akun lain
 
 async def main():
     proxy_file = 'proxy.txt'
@@ -116,9 +109,14 @@ async def main():
     active_proxies = random.sample(all_proxies, num_proxies_to_use)
 
     tasks = {}
-    for user_id, proxy in zip(user_ids, active_proxies):
-        task = asyncio.create_task(connect_to_wss(proxy, user_id))
-        tasks[task] = proxy
+    failed_accounts = []
+
+    # Inisialisasi tugas untuk setiap akun
+    for user_id in user_ids:
+        if active_proxies:  # Pastikan ada proxy yang tersedia
+            proxy = active_proxies.pop()  # Ambil proxy yang tersedia
+            task = asyncio.create_task(connect_to_wss(proxy, user_id))
+            tasks[task] = proxy
 
     # Pastikan tasks tidak kosong sebelum menunggu
     if not tasks:
@@ -129,26 +127,21 @@ async def main():
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
         for task in done:
             if task.result() is None:
-                failed_proxy = tasks[task]
-                logger.info(f"Menghapus dan mengganti proxy yang gagal: {failed_proxy}")
-                active_proxies.remove(failed_proxy)
-                new_proxy = random.choice(all_proxies)
-                active_proxies.append(new_proxy)
-                new_task = asyncio.create_task(connect_to_wss(new_proxy, user_id))
-                tasks[new_task] = new_proxy
+                failed_accounts.append(tasks[task])  # Menyimpan proxy yang gagal
+                logger.info(f"Menghapus dan mengganti proxy yang gagal: {tasks[task]}")
             tasks.pop(task)
-        for proxy in set(active_proxies) - set(tasks.values()):
-            new_task = asyncio.create_task(connect_to_wss(proxy, user_id))
-            tasks[new_task] = proxy
 
-def remove_proxy_from_list(proxy):
-    with open("proxy.txt", "r+") as file:
-        lines = file.readlines()
-        file.seek(0)
-        for line in lines:
-            if line.strip() != proxy:
-                file.write(line)
-        file.truncate()
+    # Mengulang akun yang gagal setelah semua akun yang berhasil terhubung
+    for failed_proxy in failed_accounts:
+        # Dapatkan user_id yang terkait dengan proxy gagal
+        user_id_index = user_ids.index(task)  # Dapatkan index user_id yang gagal
+        new_user_id = user_ids[user_id_index]  # Ambil user_id yang sesuai dengan task yang gagal
+        
+        if active_proxies:  # Pastikan ada proxy baru yang tersedia
+            new_proxy = active_proxies.pop()  # Ambil proxy baru secara acak
+            logger.info(f"Mencoba ulang {new_user_id} dengan proxy {new_proxy}.")
+            new_task = asyncio.create_task(connect_to_wss(new_proxy, new_user_id))
+            tasks[new_task] = new_proxy
 
 if __name__ == '__main__':
     display_colored_text()
