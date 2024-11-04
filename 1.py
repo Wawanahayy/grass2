@@ -39,11 +39,11 @@ async def connect_to_wss(socks5_proxy, user_id):
             }) as websocket:
                 async def send_ping():
                     while True:
+                        await asyncio.sleep(random.uniform(5, 15))  # PING dengan delay acak
                         send_message = json.dumps(
                             {"id": str(uuid.uuid4()), "version": "1.0.0", "action": "PING", "data": {}})
                         logger.debug(send_message)
                         await websocket.send(send_message)
-                        await asyncio.sleep(random.uniform(5, 15))  # Interval PING acak antara 5 hingga 15 detik
 
                 send_ping_task = asyncio.create_task(send_ping())
                 try:
@@ -77,68 +77,63 @@ async def connect_to_wss(socks5_proxy, user_id):
 
         except Exception as e:
             logger.error(f"Kesalahan dengan proxy {socks5_proxy} untuk User ID {user_id}: {str(e)}")
-            # Penundaan acak antara 5 hingga 10 detik sebelum melanjutkan ke akun lain
+            # Tunggu acak antara 5 hingga 10 detik sebelum melanjutkan
             await asyncio.sleep(random.uniform(5, 10))
-            return user_id  # Mengembalikan user_id untuk menandakan kegagalan dan melanjutkan ke akun lain
+            return None  # Kembali untuk mengizinkan loop utama mencoba user ID lain
 
 async def main():
     proxy_file = 'proxy.txt'
     user_file = 'akun.txt'
+    failed_user_ids = []  # Daftar untuk menyimpan user ID yang gagal
 
-    # Baca User ID dari file akun.txt
-    try:
-        with open(user_file, 'r') as file:
-            user_ids = file.read().splitlines()
-    except FileNotFoundError:
-        logger.error(f"File {user_file} tidak ditemukan.")
-        return
+    while True:
+        # Baca User ID dari file akun.txt
+        try:
+            with open(user_file, 'r') as file:
+                user_ids = file.read().splitlines()
+        except FileNotFoundError:
+            logger.error(f"File {user_file} tidak ditemukan.")
+            return
 
-    # Baca Proxy dari file proxy.txt
-    try:
-        with open(proxy_file, 'r') as file:
-            all_proxies = file.read().splitlines()
-    except FileNotFoundError:
-        logger.error(f"File {proxy_file} tidak ditemukan.")
-        return
+        # Baca Proxy dari file proxy.txt
+        try:
+            with open(proxy_file, 'r') as file:
+                all_proxies = file.read().splitlines()
+        except FileNotFoundError:
+            logger.error(f"File {proxy_file} tidak ditemukan.")
+            return
 
-    if not all_proxies or not user_ids:
-        logger.error("Tidak ada proxy atau User ID yang tersedia.")
-        return
+        if not all_proxies or not user_ids:
+            logger.error("Tidak ada proxy atau User ID yang tersedia.")
+            return
 
-    num_proxies_to_use = min(len(all_proxies), len(user_ids))
-    active_proxies = random.sample(all_proxies, num_proxies_to_use)
+        # Pastikan tidak menggunakan lebih banyak proxy daripada user ID
+        num_proxies_to_use = min(len(all_proxies), len(user_ids))
+        active_proxies = random.sample(all_proxies, num_proxies_to_use)
 
-    tasks = {}
-    failed_accounts = []
-
-    # Inisialisasi tugas untuk setiap akun
-    for user_id in user_ids:
-        if active_proxies:  # Pastikan ada proxy yang tersedia
-            proxy = active_proxies.pop()  # Ambil proxy yang tersedia
+        tasks = {}
+        for user_id, proxy in zip(user_ids, active_proxies):
             task = asyncio.create_task(connect_to_wss(proxy, user_id))
-            tasks[task] = user_id  # Simpan user_id yang terkait dengan task
+            tasks[task] = (proxy, user_id)
 
-    # Pastikan tasks tidak kosong sebelum menunggu
-    if not tasks:
-        logger.error("Tidak ada tugas yang dapat dijalankan.")
-        return
+        while tasks:
+            done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                proxy, user_id = tasks[task]
+                tasks.pop(task)
+                if task.result() is None:
+                    logger.info(f"Menghapus dan mengganti proxy yang gagal: {proxy} untuk User ID: {user_id}")
+                    failed_user_ids.append(user_id)  # Simpan user ID yang gagal
+                else:
+                    # Jika berhasil, hapus user ID dari daftar gagal
+                    if user_id in failed_user_ids:
+                        failed_user_ids.remove(user_id)
 
-    while tasks:
-        done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            user_id = tasks[task]  # Ambil user_id yang terkait dengan task
-            if task.result() is None:
-                failed_accounts.append(user_id)  # Menyimpan user_id yang gagal
-                logger.info(f"Menghapus dan mengganti proxy yang gagal: {user_id}")
-            tasks.pop(task)
-
-    # Mengulang akun yang gagal setelah semua akun yang berhasil terhubung
-    for failed_user_id in failed_accounts:
-        if active_proxies:  # Pastikan ada proxy baru yang tersedia
-            new_proxy = active_proxies.pop()  # Ambil proxy baru
-            logger.info(f"Mencoba ulang {failed_user_id} dengan proxy {new_proxy}.")
-            new_task = asyncio.create_task(connect_to_wss(new_proxy, failed_user_id))
-            tasks[new_task] = failed_user_id  # Simpan user_id yang terkait dengan task baru
+        # Jika ada user ID yang gagal, coba lagi setelah semua yang lain selesai
+        if failed_user_ids:
+            logger.info(f"Menjalankan ulang User ID yang gagal: {failed_user_ids}")
+            user_ids = failed_user_ids.copy()  # Dapatkan salinan user ID yang gagal
+            failed_user_ids.clear()  # Bersihkan daftar gagal untuk siklus berikutnya
 
 if __name__ == '__main__':
     display_colored_text()
