@@ -79,7 +79,7 @@ async def connect_to_wss(socks5_proxy, user_id):
             logger.error(f"Kesalahan dengan proxy {socks5_proxy} untuk User ID {user_id}: {str(e)}")
             # Penundaan acak antara 5 hingga 10 detik sebelum melanjutkan ke akun lain
             await asyncio.sleep(random.uniform(5, 10))
-            return None  # Mengembalikan None untuk menandakan kegagalan dan melanjutkan ke akun lain
+            return user_id  # Mengembalikan user_id untuk menandakan kegagalan dan melanjutkan ke akun lain
 
 async def main():
     proxy_file = 'proxy.txt'
@@ -116,7 +116,7 @@ async def main():
         if active_proxies:  # Pastikan ada proxy yang tersedia
             proxy = active_proxies.pop()  # Ambil proxy yang tersedia
             task = asyncio.create_task(connect_to_wss(proxy, user_id))
-            tasks[task] = proxy
+            tasks[task] = user_id  # Simpan user_id yang terkait dengan task
 
     # Pastikan tasks tidak kosong sebelum menunggu
     if not tasks:
@@ -126,22 +126,19 @@ async def main():
     while tasks:
         done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
         for task in done:
+            user_id = tasks[task]  # Ambil user_id yang terkait dengan task
             if task.result() is None:
-                failed_accounts.append(tasks[task])  # Menyimpan proxy yang gagal
-                logger.info(f"Menghapus dan mengganti proxy yang gagal: {tasks[task]}")
+                failed_accounts.append(user_id)  # Menyimpan user_id yang gagal
+                logger.info(f"Menghapus dan mengganti proxy yang gagal: {user_id}")
             tasks.pop(task)
 
     # Mengulang akun yang gagal setelah semua akun yang berhasil terhubung
-    for failed_proxy in failed_accounts:
-        # Dapatkan user_id yang terkait dengan proxy gagal
-        user_id_index = user_ids.index(task)  # Dapatkan index user_id yang gagal
-        new_user_id = user_ids[user_id_index]  # Ambil user_id yang sesuai dengan task yang gagal
-        
+    for failed_user_id in failed_accounts:
         if active_proxies:  # Pastikan ada proxy baru yang tersedia
-            new_proxy = active_proxies.pop()  # Ambil proxy baru secara acak
-            logger.info(f"Mencoba ulang {new_user_id} dengan proxy {new_proxy}.")
-            new_task = asyncio.create_task(connect_to_wss(new_proxy, new_user_id))
-            tasks[new_task] = new_proxy
+            new_proxy = active_proxies.pop()  # Ambil proxy baru
+            logger.info(f"Mencoba ulang {failed_user_id} dengan proxy {new_proxy}.")
+            new_task = asyncio.create_task(connect_to_wss(new_proxy, failed_user_id))
+            tasks[new_task] = failed_user_id  # Simpan user_id yang terkait dengan task baru
 
 if __name__ == '__main__':
     display_colored_text()
