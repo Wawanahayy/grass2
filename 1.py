@@ -33,18 +33,20 @@ async def connect_to_wss(socks5_proxy, user_id):
             uri = "wss://proxy.wynd.network:4444/"
             server_hostname = "proxy.wynd.network"
             proxy = Proxy.from_url(socks5_proxy)
+
             async with proxy_connect(uri, proxy=proxy, ssl=ssl_context, extra_headers={
                 "Origin": "chrome-extension://lkbnfiajjmbhnfledhphioinpickokdi",
                 "User-Agent": custom_headers["User-Agent"]
             }) as websocket:
-async def send_ping():
-    while True:
-        send_message = json.dumps(
-            {"id": str(uuid.uuid4()), "version": "1.0.0", "action": "PING", "data": {}})
-        logger.debug(send_message)
-        await websocket.send(send_message)
-        await asyncio.sleep(random.uniform(5, 10))  # Jeda acak antara 5 hingga 10 detik
 
+                async def send_ping():
+                    while True:
+                        send_message = json.dumps({
+                            "id": str(uuid.uuid4()), "version": "1.0.0", "action": "PING", "data": {}
+                        })
+                        logger.debug(send_message)
+                        await websocket.send(send_message)
+                        await asyncio.sleep(random.uniform(5, 10))  # Jeda acak 5-10 detik
 
                 send_ping_task = asyncio.create_task(send_ping())
                 try:
@@ -78,7 +80,10 @@ async def send_ping():
 
         except Exception as e:
             logger.error(f"Kesalahan dengan proxy {socks5_proxy} untuk User ID {user_id}: {str(e)}")
-            if any(error_msg in str(e) for error_msg in ["[SSL: WRONG_VERSION_NUMBER]", "invalid length of packed IP address string", "Empty connect reply", "Device creation limit exceeded", "sent 1011 (internal error) keepalive ping timeout; no close frame received"]):
+            if any(error_msg in str(e) for error_msg in [
+                "[SSL: WRONG_VERSION_NUMBER]", "invalid length of packed IP address string",
+                "Empty connect reply", "Device creation limit exceeded",
+                "sent 1011 (internal error) keepalive ping timeout; no close frame received"]):
                 logger.info(f"Menghapus proxy yang error dari daftar: {socks5_proxy}")
                 remove_proxy_from_list(socks5_proxy)
                 return None
@@ -118,7 +123,6 @@ async def main():
             task = asyncio.create_task(connect_to_wss(proxy, user_id))
             tasks[task] = proxy
 
-        # Pastikan tasks tidak kosong sebelum menunggu
         if not tasks:
             logger.error("Tidak ada tugas yang dapat dijalankan.")
             return
