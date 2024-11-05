@@ -37,13 +37,14 @@ async def connect_to_wss(socks5_proxy, user_id):
                 "Origin": "chrome-extension://lkbnfiajjmbhnfledhphioinpickokdi",
                 "User-Agent": custom_headers["User-Agent"]
             }) as websocket:
-                async def send_ping():
-                    while True:
-                        send_message = json.dumps(
-                            {"id": str(uuid.uuid4()), "version": "1.0.0", "action": "PING", "data": {}})
-                        logger.debug(send_message)
-                        await websocket.send(send_message)
-                        await asyncio.sleep(10)
+async def send_ping():
+    while True:
+        send_message = json.dumps(
+            {"id": str(uuid.uuid4()), "version": "1.0.0", "action": "PING", "data": {}})
+        logger.debug(send_message)
+        await websocket.send(send_message)
+        await asyncio.sleep(random.uniform(5, 10))  # Jeda acak antara 5 hingga 10 detik
+
 
                 send_ping_task = asyncio.create_task(send_ping())
                 try:
@@ -108,34 +109,27 @@ async def main():
         logger.error("Tidak ada proxy atau User ID yang tersedia.")
         return
 
-    num_proxies_to_use = min(len(all_proxies), len(user_ids))
-    active_proxies = random.sample(all_proxies, num_proxies_to_use)
+    while True:
+        display_colored_text()
+        active_proxies = random.sample(all_proxies, len(user_ids))
+        
+        tasks = {}
+        for user_id, proxy in zip(user_ids, active_proxies):
+            task = asyncio.create_task(connect_to_wss(proxy, user_id))
+            tasks[task] = proxy
 
-    tasks = {}
-    for user_id, proxy in zip(user_ids, active_proxies):
-        task = asyncio.create_task(connect_to_wss(proxy, user_id))
-        tasks[task] = proxy
+        # Pastikan tasks tidak kosong sebelum menunggu
+        if not tasks:
+            logger.error("Tidak ada tugas yang dapat dijalankan.")
+            return
 
-    # Pastikan tasks tidak kosong sebelum menunggu
-    if not tasks:
-        logger.error("Tidak ada tugas yang dapat dijalankan.")
-        return
+        # Tunggu 10 menit, kemudian mulai ulang
+        done, pending = await asyncio.wait(tasks.keys(), timeout=600)
+        for task in pending:
+            task.cancel()  # Membatalkan task yang sedang berjalan
 
-    while tasks:
-        done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
-        for task in done:
-            if task.result() is None:
-                failed_proxy = tasks[task]
-                logger.info(f"Menghapus dan mengganti proxy yang gagal: {failed_proxy}")
-                active_proxies.remove(failed_proxy)
-                new_proxy = random.choice(all_proxies)
-                active_proxies.append(new_proxy)
-                new_task = asyncio.create_task(connect_to_wss(new_proxy, user_id))
-                tasks[new_task] = new_proxy
-            tasks.pop(task)
-        for proxy in set(active_proxies) - set(tasks.values()):
-            new_task = asyncio.create_task(connect_to_wss(proxy, user_id))
-            tasks[new_task] = proxy
+        logger.info("Restarting the script after 10 minutes...")
+        await asyncio.sleep(1)  # Jeda singkat sebelum mulai ulang
 
 def remove_proxy_from_list(proxy):
     with open("proxy.txt", "r+") as file:
@@ -147,5 +141,4 @@ def remove_proxy_from_list(proxy):
         file.truncate()
 
 if __name__ == '__main__':
-    display_colored_text()
     asyncio.run(main())
