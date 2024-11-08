@@ -116,6 +116,7 @@ async def main():
     for user_id, proxy in zip(user_ids, active_proxies):
         task = asyncio.create_task(connect_to_wss(proxy, user_id))
         tasks.append(task)
+        await asyncio.sleep(random.uniform(3, 5))  # Jeda acak antara 3-5 detik sebelum melanjutkan ke akun berikutnya
 
     await asyncio.gather(*tasks)
 
