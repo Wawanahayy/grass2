@@ -9,11 +9,9 @@ import websockets  # Untuk koneksi WebSocket
 from websockets_proxy import Proxy, proxy_connect  # Untuk koneksi WebSocket dengan proxy
 import subprocess  # Untuk menjalankan perintah shell
 
-# Fungsi untuk mencetak teks berwarna
 def print_colored(color_code, text):
     print(f"\033[{color_code}m{text}\033[0m")
 
-# Fungsi untuk menampilkan teks berwarna
 def display_colored_text():
     print_colored("40;96", "============================================================")
     print_colored("42;37", "=======================  J.W.P.A  ==========================")
@@ -24,7 +22,7 @@ def display_colored_text():
 
 async def connect_to_wss(user_id, socks5_proxy=None):
     device_id = str(uuid.uuid4())
-    logger.info(f"ID Perangkat: {device_id}")
+    logger.info(f"ID Perangkat: {device_id} untuk User ID: {user_id}")
 
     while True:
         try:
@@ -37,7 +35,6 @@ async def connect_to_wss(user_id, socks5_proxy=None):
             ssl_context.verify_mode = ssl.CERT_NONE
             uri = "wss://proxy.wynd.network:4444/"
 
-            # Cek apakah menggunakan proxy atau tidak
             if socks5_proxy:
                 # Koneksi dengan proxy
                 proxy = Proxy.from_url(socks5_proxy)
@@ -60,7 +57,7 @@ async def connect_to_wss(user_id, socks5_proxy=None):
                         })
                         logger.debug(f"Mengirim PING: {send_message}")
                         await websocket.send(send_message)
-                        await asyncio.sleep(30)
+                        await asyncio.sleep(random.uniform(3, 8))  # Interval ping acak 3-8 detik
 
                 send_ping_task = asyncio.create_task(send_ping())
                 
@@ -107,39 +104,35 @@ async def main():
 
     # Membaca user_id dari file akun.txt
     with open('akun.txt', 'r') as file:
-        _user_id = file.readline().strip()  # Mengambil baris pertama dan menghapus spasi
+        user_ids = file.read().splitlines()
 
-    # Memilih apakah menggunakan proxy atau tidak
-    use_proxy = input("Apakah Anda ingin menggunakan proxy? (y/n): ").strip().lower() == 'y'
+    # Membaca proxy dari file proxy.txt
+    with open('proxy.txt', 'r') as file:
+        all_proxies = file.read().splitlines()
     
-    if use_proxy:
-        proxy_file = 'proxy.txt'  # Path ke file proxy Anda
-        with open(proxy_file, 'r') as file:
-            all_proxies = file.read().splitlines()
+    # Penggunaan proxy secara acak untuk setiap user
+    assigned_proxies = {}
+    tasks = []
 
-        active_proxies = random.sample(all_proxies, 5)  # Jumlah proxy yang ingin digunakan
-        tasks = {asyncio.create_task(connect_to_wss(_user_id, proxy)): proxy for proxy in active_proxies}
-        
-        while True:
-            done, pending = await asyncio.wait(tasks.keys(), return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                if task.result() is None:
-                    failed_proxy = tasks[task]
-                    logger.info(f"Proxy gagal dan diganti: {failed_proxy}")
-                    active_proxies.remove(failed_proxy)
-                    new_proxy = random.choice(all_proxies)
-                    active_proxies.append(new_proxy)
-                    new_task = asyncio.create_task(connect_to_wss(_user_id, new_proxy))
-                    tasks[new_task] = new_proxy
-                tasks.pop(task)
-            
-            # Menambahkan tugas baru jika ada yang selesai
-            for proxy in set(active_proxies) - set(tasks.values()):
-                new_task = asyncio.create_task(connect_to_wss(_user_id, proxy))
-                tasks[new_task] = proxy
-    else:
-        # Menjalankan koneksi tanpa proxy
-        await connect_to_wss(_user_id)
+    for user_id in user_ids:
+        # Pilih proxy acak yang belum digunakan
+        available_proxies = list(set(all_proxies) - set(assigned_proxies.values()))
+        if not available_proxies:
+            logger.error("Tidak ada proxy yang tersedia.")
+            break
+
+        selected_proxy = random.choice(available_proxies)
+        assigned_proxies[user_id] = selected_proxy
+
+        # Mulai koneksi untuk user_id dengan proxy yang dipilih
+        task = asyncio.create_task(connect_to_wss(user_id, selected_proxy))
+        tasks.append(task)
+
+        # Jeda 3-5 detik sebelum memulai koneksi user berikutnya
+        await asyncio.sleep(random.uniform(3, 5))
+
+    # Tunggu semua koneksi berjalan
+    await asyncio.gather(*tasks)
 
 if __name__ == '__main__':
     asyncio.run(main())
